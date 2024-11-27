@@ -196,7 +196,7 @@ class GlobalController:
         # print(controller_user_prompt)
         # self.logger.debug("-"*15 + "assign prompt end" + "-"*15)
 
-        response = self.llm.few_shot_generate_thoughts(controller_system_prompt, controller_user_prompt, cache_enabled=True, json_check=True)
+        response = self.llm.generate(controller_system_prompt, controller_user_prompt, cache_enabled=True, json_check=True)
         # self.logger.debug("-"*10 + "response in controller" + "-"*10)
         # print(response)
         # self.logger.debug("-"*15 + "response end" + "-"*15)
@@ -216,7 +216,7 @@ class GlobalController:
         # print(controller_user_prompt)
         # self.logger.debug("-"*15 + "decompose prompt end" + "-"*15)
 
-        response = self.llm.few_shot_generate_thoughts(controller_system_prompt, controller_user_prompt, cache_enabled=True, json_check=True)
+        response = self.llm.generate(controller_system_prompt, controller_user_prompt, cache_enabled=True, json_check=True)
         self.logger.debug("-"*10 + "response in controller" + "-"*10)
         # print(response)
         self.logger.debug("-"*15 + "response end" + "-"*15)

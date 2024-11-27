@@ -3,7 +3,7 @@ import os
 sys.path.append(os.getcwd())
 import time
 import logging
-from CityEnvironment.city_emergency_env import EmergencyEnvironment
+from CityEnvironment.city_emergency_env import CityEmergencyEnv
 from type_define.graph import Task
 from CityPipe.data_manager import DataManager
 from CityPipe.utils import *
@@ -41,7 +41,7 @@ class EmergencyResponseAgent:
     - to_json: serialize agent state
     '''
     _virtual_debug = False
-    def __init__(self, llm:OpenAILanguageModel, env:EmergencyEnvironment, data_manager:DataManager, 
+    def __init__(self, llm:OpenAILanguageModel, env:CityEmergencyEnv, data_manager:DataManager, 
                  name:str, agent_type:str, logger:logging.Logger = None, silent = False, **kwargs):
         self.env = env
         self.name = name
@@ -143,7 +143,7 @@ class EmergencyResponseAgent:
                                        "state": self.data_manager.query_history(self.name),
                                        "action_history": action_history
                                    })
-            response = self.llm.few_shot_generate_thoughts(reflect_system_prompt, prompt, cache_enabled=False, max_tokens=256, json_check=True)
+            response = self.llm.generate(reflect_system_prompt, prompt, cache_enabled=False, max_tokens=256, json_check=True)
         else:
             prompt = format_string(reflect_user_prompt,
                                    {
@@ -152,7 +152,7 @@ class EmergencyResponseAgent:
                                        "state": self.data_manager.query_history(self.name),
                                        "action_history": action_history
                                    })
-            response = self.llm.few_shot_generate_thoughts(reflect_system_prompt, prompt, cache_enabled=False, max_tokens=256, json_check=True)
+            response = self.llm.generate(reflect_system_prompt, prompt, cache_enabled=False, max_tokens=256, json_check=True)
         # print(response)
         result = extract_info(response)[0]
         task.reflect = result
@@ -238,7 +238,7 @@ class EmergencyResponseAgent:
             "final_answer": final_answer,
         }
         
-        self.data_manager.update_database(AgentFeedback(task, detail, EmergencyEnvironment.virtual_env(self.name)).to_json())
+        self.data_manager.update_database(AgentFeedback(task, detail, CityEmergencyEnv.virtual_env(self.name)).to_json())
         # self.data_manager.save()
         return final_answer, {"input": input, "action_list": action_list, "final_answer": final_answer}
 
@@ -251,7 +251,7 @@ class BaseAgent:
     to_json: return the json format of the agent
     '''
     _virtual_debug = False
-    def __init__(self, llm:OpenAILanguageModel , env:EmergencyEnvironment, data_manager:DataManager, name:str, logger:logging.Logger = None, silent = False, **kwargs):
+    def __init__(self, llm:OpenAILanguageModel , env:CityEmergencyEnv, data_manager:DataManager, name:str, logger:logging.Logger = None, silent = False, **kwargs):
         self.env = env
         self.name = name
         self.data_manager = data_manager
@@ -337,7 +337,7 @@ class BaseAgent:
                                        "state": self.data_manager.query_history(self.name),
                                        "action_history": action_history
                                    })
-            response = self.llm.few_shot_generate_thoughts(reflect_system_prompt, prompt, cache_enabled=False, max_tokens=256, json_check=True)
+            response = self.llm.generate(reflect_system_prompt, prompt, cache_enabled=False, max_tokens=256, json_check=True)
         else:
             prompt = format_string(reflect_user_prompt,
                                    {
@@ -346,7 +346,7 @@ class BaseAgent:
                                        "state": self.data_manager.query_history(self.name),
                                        "action_history": action_history
                                    })
-            response = self.llm.few_shot_generate_thoughts(reflect_system_prompt, prompt, cache_enabled=False, max_tokens=256, json_check=True)
+            response = self.llm.generate(reflect_system_prompt, prompt, cache_enabled=False, max_tokens=256, json_check=True)
         # print(response)
         result = extract_info(response)[0]
         task.reflect = result

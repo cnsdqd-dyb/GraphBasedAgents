@@ -5,7 +5,7 @@ from typing import Dict, List, Tuple, Optional
 
 from LLM.openai_models import OpenAILanguageModel
 from CityPipe.data_prompt import AGENT_INFO_STORE_FORMAT, \
-    SUCCESS_DECOMPOSE_PLAN_FORMAT, NOT_SUCCESS_DECOMPOSE_PLAN_FORMAT, ENVIRONMENT_INFO_FORMAT, \
+    SUCCESS_DECOMPOSE_PLAN_FORMAT, NOT_SUCCESS_DECOMPOSE_PLAN_FORMAT, ENVIRONMENT_UPDATE_FORMAT, \
     HISTORY_SUMMARY_PROMPT, \
     SUMMARY_ENVIRONMENT_SYSTEM_PROMPT, SUMMARY_ENVIRONMENT_EXAMPLE_PROMPT
 from type_define.decomposed_summary_system import DecomposeSummarySystem
@@ -84,6 +84,7 @@ class DataManager:
         }
         self._history_data = {}  # 历史记录
         self._experience_data = {}  # 经验数据
+        self._agent_data = []  # 智能体数据
         self.llm = llm
         self._logger = logger
         if self._logger is None:
@@ -205,7 +206,10 @@ class DataManager:
         # 3. 查找相关资源
         available_resources = []
         for resource_type, units in self._env_data["resources"].items():
-            available = len([u for u in units if u[2] == "available"])
+            if isinstance(units, list):
+                available = len([u for u in units if isinstance(u, tuple) and len(u) > 2 and u[2] == "available"])
+            else:
+                available = units if isinstance(units, (int, float)) else 0
             available_resources.append(f"{resource_type}: {available} units available")
         
         if available_resources:
@@ -338,4 +342,84 @@ class DataManager:
                     break
             self._agent_data.append(agent_data)
             self._logger.info(f"Update agent {agent_data['name']} successfully")
-{{ ... }}
+
+        self._logger.info("Update database finished")
+
+    def _process_env(self, item: dict) -> dict:
+        """
+        Process environment data from input item.
+        
+        Args:
+            item (dict): Input item containing environment data
+            
+        Returns:
+            dict: Processed environment data
+        """
+        try:
+            env_data = {}
+            
+            # Extract departments data if available
+            if "departments" in item:
+                env_data["departments"] = item["departments"]
+            
+            # Extract buildings data if available
+            if "buildings" in item:
+                env_data["buildings"] = item["buildings"]
+                
+            # Extract resources data if available
+            if "resources" in item:
+                env_data["resources"] = item["resources"]
+                
+            # Extract traffic data if available
+            if "traffic" in item:
+                env_data["traffic"] = item["traffic"]
+                
+            return env_data
+        except Exception as e:
+            self._logger.error(f"Error processing environment data: {str(e)}")
+            return {}
+
+    def _process_agent(self, item: dict) -> dict:
+        """
+        Process agent data from input item.
+        
+        Args:
+            item (dict): Input item containing agent data
+            
+        Returns:
+            dict: Processed agent data
+        """
+        try:
+            agent_data = {
+                "name": item.get("name", ""),
+                "type": item.get("type", ""),
+                "status": item.get("status", {}),
+                "location": item.get("location", None),
+                "resources": item.get("resources", {}),
+                "assignments": item.get("assignments", []),
+                "current_task": item.get("current_task", None),
+                "history": item.get("history", [])
+            }
+            
+            # Add department-specific data based on agent type
+            if "type" in item:
+                if item["type"] == "medical":
+                    agent_data["medical_team"] = item.get("medical_team", [])
+                    agent_data["hospital_id"] = item.get("hospital_id", None)
+                elif item["type"] == "rescue":
+                    agent_data["rescue_team"] = item.get("rescue_team", [])
+                    agent_data["equipment"] = item.get("equipment", [])
+                elif item["type"] == "security":
+                    agent_data["security_team"] = item.get("security_team", [])
+                    agent_data["patrol_area"] = item.get("patrol_area", None)
+                elif item["type"] == "monitor":
+                    agent_data["monitoring_area"] = item.get("monitoring_area", None)
+                    agent_data["sensor_data"] = item.get("sensor_data", {})
+                elif item["type"] == "traffic":
+                    agent_data["controlled_roads"] = item.get("controlled_roads", [])
+                    agent_data["traffic_status"] = item.get("traffic_status", {})
+            
+            return agent_data
+        except Exception as e:
+            self._logger.error(f"Error processing agent data: {str(e)}")
+            return {}

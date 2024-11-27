@@ -46,9 +46,9 @@ class AgentFeedback:
 #         message = self.env.get_msg(self.name)
 #         self.chat_history.append(message)
 #         if isinstance(self.llm, OpenAILanguageModel):
-#             response = self.llm.few_shot_generate_thoughts(self.role_description, message, cache_enabled=False, max_tokens=256, json_check=True)
+#             response = self.llm.generate(self.role_description, message, cache_enabled=False, max_tokens=256, json_check=True)
 #         else:
-#             response = self.llm.few_shot_generate_thoughts(self.role_description, message, cache_enabled=False, max_tokens=256, json_check=True)
+#             response = self.llm.generate(self.role_description, message, cache_enabled=False, max_tokens=256, json_check=True)
 #         self.chat_history.append({"name": self.name, "message": response})
         
         
@@ -148,7 +148,7 @@ class BaseAgent:
                                        "state": self.data_manager.query_history(self.name),
                                        "action_history": action_history
                                    })
-            response = self.llm.few_shot_generate_thoughts(reflect_system_prompt, prompt, cache_enabled=False, max_tokens=256, json_check=True)
+            response = self.llm.generate(reflect_system_prompt, prompt, cache_enabled=False, max_tokens=256, json_check=True)
         else:
             prompt = format_string(reflect_user_prompt,
                                    {
@@ -157,7 +157,7 @@ class BaseAgent:
                                        "state": self.data_manager.query_history(self.name),
                                        "action_history": action_history
                                    })
-            response = self.llm.few_shot_generate_thoughts(reflect_system_prompt, prompt, cache_enabled=False, max_tokens=256, json_check=True)
+            response = self.llm.generate(reflect_system_prompt, prompt, cache_enabled=False, max_tokens=256, json_check=True)
         # print(response)
         result = extract_info(response)[0]
         task.reflect = result

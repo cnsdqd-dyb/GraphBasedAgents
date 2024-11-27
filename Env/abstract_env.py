@@ -1,5 +1,8 @@
 from abc import ABC, abstractmethod
-from ..Agent.abstract_agent import AbstractAgent
+from contextlib import contextmanager
+import traceback
+
+from Agent.abstract_agent import AbstractAgent
 import logging
 import json
 import os
@@ -15,7 +18,7 @@ class MultiAgentEnvironment(ABC):
         self.agent_pool = []
         self.log = {}
         self.running = False
-        self.virtual_debug = virtual_debug
+        self._virtual_debug = virtual_debug
         self.logger = self.init_logger(name="Env", level=logging.DEBUG)
         self.launch_time = None
 
@@ -106,6 +109,34 @@ class MultiAgentEnvironment(ABC):
         else:
             return {"message": "action log not found", "status": False}
 
+    @contextmanager
+    def run(self, server_debug: bool = False, fast_api=False):
+        """Context manager for running the environment"""
+        try:
+            if not self._virtual_debug:
+                self.launch(debug=server_debug, fast_api=fast_api)
+                self.logger.info(f"[env launched at {self.host}]")
+            else:
+                self.logger.info("[virtual debug mode, env not launched]")
+            self.launch_time = time.time()
+            yield self
+        except Exception as e:
+            tb = traceback.format_exc()
+            self.logger.error(f"Exception occurred: {e}\n{tb}")
+            self.stop()
+            raise
+        finally:
+            self.stop()
+            if os.path.exists(".cache/state.json"):
+                with open(".cache/state.json") as f:
+                    state = json.load(f)
+                state["state"] = "idle"
+                with open(".cache/state.json", "w") as f:
+                    json.dump(state, f)
+            if os.path.exists(".cache/env.cache"):
+                with open(".cache/env.cache", "w") as f:
+                    json.dump([], f)
+
 # Example usage:
 # class VillagerBench(MultiAgentEnvironment):
 #     def agent_register(self, agent_tool=[], agent_number: int = 1, name_list: [str] = []):
@@ -116,4 +147,3 @@ class MultiAgentEnvironment(ABC):
 #         ...
 #     def stop(self):
 #         ...
-

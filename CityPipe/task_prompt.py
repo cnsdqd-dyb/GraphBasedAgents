@@ -13,7 +13,7 @@ A subtask-structure has the following json component:
     "estimated_duration": int, # Estimated time in minutes to complete the subtask
     "required_resources": dict, # Required resources like {"ambulances": 2, "paramedics": 4}
     "required_subtasks": list[int], # IDs of subtasks that must be completed before this one
-    "response_units": list[string], # Types of response units needed (e.g., ["medical", "fire", "police"])
+    "assigned_units": list[string], # Types of response units needed (e.g., ["medical", "fire", "police"])
     "minimum_required_units": int # Minimum number of response units needed
 }
 
@@ -74,7 +74,7 @@ Example Response Format:
                 "communication_equipment": 2
             },
             "required_subtasks": [],
-            "response_units": ["incident_command"],
+            "assigned_units": ["incident_command"],
             "minimum_required_units": 1
         }
     ]

@@ -1,6 +1,6 @@
 from typing import Dict, List, Tuple
 from .abstract_agent import AbstractAgent
-from Environment.city_emergency_env import CityEmergencyEnv
+from CityEnvironment.city_emergency_env import CityEmergencyEnv
 from langchain.agents import tool
 
 class MedicalRescueAgent(AbstractAgent):

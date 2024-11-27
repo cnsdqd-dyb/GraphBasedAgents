@@ -189,7 +189,7 @@ class TaskManager:
         # self.logger.warning("TM DEBUG:")
         # self.logger.warning(system_prompt)
         self.logger.warning(user_prompt)
-        response = self.llm.few_shot_generate_thoughts(system_prompt, user_prompt, cache_enabled=True, json_check=True,
+        response = self.llm.generate(system_prompt, user_prompt, cache_enabled=True, json_check=True,
                                                        check_tags=["description", "milestones", "assigned agents"])
         result = extract_info(response, guard_keys=["description", "milestones"])
         omit_keys = [("assigned agent", "list"), ("required subtasks", "list"), ("retrieval paths", "list")]
@@ -266,7 +266,7 @@ class TaskManager:
         # self.logger.warning("TM STRATEGY DEBUG:")
         # self.logger.warning(strategy_system_prompt)
         # self.logger.warning(strategy_user_prompt)
-        response = self.llm.few_shot_generate_thoughts(strategy_system_prompt, strategy_user_prompt, cache_enabled=False, json_check=True
+        response = self.llm.generate(strategy_system_prompt, strategy_user_prompt, cache_enabled=False, json_check=True
                                                     #    api_model="gpt-4-1106-preview",
                                                     #    check_tags=["reasoning", "strategy", "info"]
                                                        
@@ -458,7 +458,7 @@ class TaskManager:
         # self.logger.warning("TM DEBUG:")
         # self.logger.warning(system_prompt)
         self.logger.warning(user_prompt)
-        response = self.llm.few_shot_generate_thoughts(system_prompt, user_prompt, cache_enabled=True, json_check=True,
+        response = self.llm.generate(system_prompt, user_prompt, cache_enabled=True, json_check=True,
                                                        check_tags=["description", "milestones", "assigned agents"])
         result = extract_info(response, guard_keys=["description", "milestones", "assigned agents"])
         omit_keys = [("assigned agent", "list"), ("required subtasks", "list"), ("retrieval paths", "list")]

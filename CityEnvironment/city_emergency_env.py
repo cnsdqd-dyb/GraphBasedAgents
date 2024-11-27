@@ -2,7 +2,7 @@ from typing import Dict, List, Tuple
 from Env.abstract_env import MultiAgentEnvironment
 import random
 from datetime import datetime, timedelta
-from .city_map import CityMap, create_default_city, Building
+from CityEnvironment.city_map import CityMap, create_default_city, Building
 
 class EmergencyEvent:
     def __init__(self, event_type: str, location: Tuple[float, float], floor: int,
@@ -31,9 +31,19 @@ class EmergencyEvent:
 class CityEmergencyEnv(MultiAgentEnvironment):
     """City emergency environment simulator"""
     
-    def __init__(self, task_id, host="0.0.0.0", port=25565, task_name="emergency_response"):
-        super().__init__("city_emergency", task_id, host, port, task_name)
-        self.city_map = create_default_city()
+    def __init__(self, city_size=(10, 10), num_hospitals=2, num_fire_stations=2, 
+                 num_police_stations=2, population_density=0.7, traffic_density=0.5,
+                 task_id=0, host="0.0.0.0", port=25565, task_name="emergency_response",
+                 virtual_debug=False):
+        super().__init__("city_emergency", task_id, host, port, task_name, virtual_debug)
+        self.city_map = create_default_city(
+            size=city_size,
+            num_hospitals=num_hospitals,
+            num_fire_stations=num_fire_stations,
+            num_police_stations=num_police_stations,
+            population_density=population_density,
+            traffic_density=traffic_density
+        )
         self.current_time = datetime.now()
         self.active_events: Dict[str, EmergencyEvent] = {}
         self.deployed_resources = {
@@ -208,3 +218,182 @@ class CityEmergencyEnv(MultiAgentEnvironment):
             return True, status, "Successfully retrieved resource status"
         except Exception as e:
             return False, {}, f"Failed to get resource status: {str(e)}"
+
+    def get_all_agent_description_tiny(self) -> dict:
+        """
+        Get brief descriptions of all agents in the environment based on their tools.
+        
+        Returns:
+            dict: A dictionary mapping agent names to their tool descriptions
+        """
+        descriptions = {}
+        for agent in self.agent_pool:
+            tool_descriptions = []
+            for tool in agent.tools:
+                if hasattr(tool, '__doc__') and tool.__doc__:
+                    tool_descriptions.append(tool.__doc__.strip())
+            descriptions[agent.name] = "; ".join(tool_descriptions)
+        return descriptions
+        
+    def agent_register(self, agent_tools=[], agent_number: int = 1, name_list: [str] = []):
+        """Register agents to the environment"""
+        super().agent_register(agent_tools, agent_number, name_list)
+        # Additional registration logic can be added here
+        return True
+
+    def launch(self, debug: bool = False, fast_api=False):
+        """Launch the environment"""
+        super().launch(debug, fast_api)
+        self.launch_time = datetime.now()
+        return True
+
+    def step(self, agent_name: str, action: str, max_turn: int = 2):
+        """Execute one step in the environment"""
+        try:
+            # Update environment state
+            self.update_environment()
+            
+            # Process agent action
+            # This is a placeholder - implement actual action processing logic
+            result = {"status": "success", "action": action}
+            
+            return True, result, "Step executed successfully"
+        except Exception as e:
+            return False, {}, f"Failed to execute step: {str(e)}"
+
+    def stop(self):
+        """Stop the environment"""
+        self.running = False
+        # Clean up resources
+        self.active_events.clear()
+        self.deployed_resources = {
+            "ambulances": [],
+            "fire_trucks": [],
+            "police_cars": []
+        }
+        self.resource_usage = {
+            "ambulances": {},
+            "fire_trucks": {},
+            "police_cars": {}
+        }
+        return True
+
+    def reset(self):
+        """Reset the environment to initial state"""
+        self.current_time = datetime.now()
+        self.active_events.clear()
+        self.deployed_resources = {
+            "ambulances": [],
+            "fire_trucks": [],
+            "police_cars": []
+        }
+        self.resource_usage = {
+            "ambulances": {},
+            "fire_trucks": {},
+            "police_cars": {}
+        }
+        return True
+
+    def get_init_state(self) -> List[Dict]:
+        """Get the initial state of the environment
+        
+        Returns:
+            List[Dict]: List of dictionaries containing information about:
+                - Buildings (hospitals, fire stations, police stations, etc.)
+                - Available resources
+                - Current events
+                - Population and traffic density
+        """
+        init_state = []
+        
+        # Add building information
+        for building_id, building in self.city_map.buildings.items():
+            building_info = {
+                "type": "building",
+                "id": building_id,
+                "building_type": building.type,
+                "location": building.location,
+                "floors": building.floors,
+                "capacity": building.capacity,
+                "resources": building.resources,
+                "status": True,
+                "message": {
+                    "building_id": building_id,
+                    "type": building.type,
+                    "location": building.location,
+                    "floors": building.floors,
+                    "capacity": building.capacity,
+                    "resources": building.resources
+                }
+            }
+            init_state.append(building_info)
+        
+        # Add current events
+        for event_id, event in self.active_events.items():
+            event_info = {
+                "type": "event",
+                "id": event_id,
+                "event_type": event.type,
+                "location": event.location,
+                "floor": event.floor,
+                "start_time": event.start_time.isoformat(),
+                "severity": event.severity,
+                "properties": event.properties,
+                "casualties": event.casualties,
+                "affected_radius": event.affected_radius,
+                "status": True,
+                "message": {
+                    "event_id": event_id,
+                    "type": event.type,
+                    "location": event.location,
+                    "floor": event.floor,
+                    "start_time": event.start_time.isoformat(),
+                    "severity": event.severity,
+                    "properties": event.properties,
+                    "casualties": event.casualties,
+                    "affected_radius": event.affected_radius
+                }
+            }
+            init_state.append(event_info)
+        
+        # Add environment status
+        env_info = {
+            "type": "environment",
+            "current_time": self.current_time.isoformat(),
+            "city_size": self.city_map.size,
+            "deployed_resources": self.deployed_resources,
+            "resource_usage": self.resource_usage,
+            "status": True,
+            "message": {
+                "current_time": self.current_time.isoformat(),
+                "city_size": self.city_map.size,
+                "deployed_resources": self.deployed_resources,
+                "resource_usage": self.resource_usage,
+                "departments": {
+                    "fire_department": {
+                        "locations": [b.location for b in self.city_map.buildings.values() if b.type == "fire_station"],
+                        "personnel": {"firefighters": [], "commanders": []},
+                        "functions": ["fire_control", "rescue", "hazmat_handling"],
+                        "on_duty": {},
+                        "contacts": {"emergency": "119", "office": "", "email": ""}
+                    },
+                    "police_department": {
+                        "locations": [b.location for b in self.city_map.buildings.values() if b.type == "police_station"],
+                        "personnel": {"officers": [], "commanders": []},
+                        "functions": ["law_enforcement", "traffic_control", "evacuation"],
+                        "on_duty": {},
+                        "contacts": {"emergency": "110", "office": "", "email": ""}
+                    },
+                    "medical_department": {
+                        "locations": [b.location for b in self.city_map.buildings.values() if b.type == "hospital"],
+                        "personnel": {"doctors": [], "nurses": [], "paramedics": []},
+                        "functions": ["emergency_medical_care", "patient_transport"],
+                        "on_duty": {},
+                        "contacts": {"emergency": "120", "office": "", "email": ""}
+                    }
+                }
+            }
+        }
+        init_state.append(env_info)
+        
+        return init_state

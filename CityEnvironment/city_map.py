@@ -62,46 +62,93 @@ class CityMap:
         self.traffic_density += np.random.uniform(0, 0.1, self.size)
         self.traffic_density = np.clip(self.traffic_density, 0, 1)
 
-def create_default_city() -> CityMap:
-    """创建一个默认的城市地图"""
-    city = CityMap()
+def create_default_city(size: Tuple[int, int] = (1000, 1000), 
+                       num_hospitals: int = 2,
+                       num_fire_stations: int = 2,
+                       num_police_stations: int = 2,
+                       population_density: float = 0.7,
+                       traffic_density: float = 0.5) -> CityMap:
+    """创建一个默认的城市地图
+    
+    Args:
+        size: 城市大小 (宽度, 高度)
+        num_hospitals: 医院数量
+        num_fire_stations: 消防站数量
+        num_police_stations: 警察局数量
+        population_density: 人口密度 (0-1)
+        traffic_density: 交通密度 (0-1)
+    """
+    city = CityMap(size)
     
     # 添加医院
-    hospitals = [
-        Building("hospital_1", "hospital", (100, 100), 10, 500, 
-                {"beds": 200, "ambulances": 10, "doctors": 50, "nurses": 100}),
-        Building("hospital_2", "hospital", (800, 800), 15, 800,
-                {"beds": 300, "ambulances": 15, "doctors": 80, "nurses": 160}),
-    ]
+    hospitals = []
+    for i in range(num_hospitals):
+        hospital = Building(
+            f"hospital_{i+1}", 
+            "hospital", 
+            (random.uniform(0, size[0]), random.uniform(0, size[1])), 
+            random.randint(10, 15), 
+            random.randint(500, 800),
+            {
+                "beds": random.randint(200, 300), 
+                "ambulances": random.randint(10, 15), 
+                "doctors": random.randint(50, 80), 
+                "nurses": random.randint(100, 160)
+            }
+        )
+        hospitals.append(hospital)
     
     # 添加消防站
-    fire_stations = [
-        Building("fire_1", "fire_station", (200, 200), 3, 50,
-                {"trucks": 5, "firefighters": 30, "equipment": 100}),
-        Building("fire_2", "fire_station", (700, 700), 3, 50,
-                {"trucks": 5, "firefighters": 30, "equipment": 100}),
-    ]
+    fire_stations = []
+    for i in range(num_fire_stations):
+        fire_station = Building(
+            f"fire_{i+1}", 
+            "fire_station", 
+            (random.uniform(0, size[0]), random.uniform(0, size[1])), 
+            3, 
+            50,
+            {
+                "trucks": random.randint(5, 8), 
+                "firefighters": random.randint(30, 40), 
+                "equipment": random.randint(100, 150)
+            }
+        )
+        fire_stations.append(fire_station)
     
     # 添加警察局
-    police_stations = [
-        Building("police_1", "police_station", (300, 300), 5, 100,
-                {"cars": 20, "officers": 100, "equipment": 200}),
-        Building("police_2", "police_station", (600, 600), 5, 100,
-                {"cars": 20, "officers": 100, "equipment": 200}),
-    ]
+    police_stations = []
+    for i in range(num_police_stations):
+        police_station = Building(
+            f"police_{i+1}", 
+            "police_station", 
+            (random.uniform(0, size[0]), random.uniform(0, size[1])), 
+            5, 
+            100,
+            {
+                "cars": random.randint(15, 25), 
+                "officers": random.randint(80, 120), 
+                "equipment": random.randint(150, 250)
+            }
+        )
+        police_stations.append(police_station)
     
     # 添加住宅和商业建筑
-    for i in range(10):
+    num_other_buildings = int(size[0] * size[1] * population_density / 10000)  # 根据人口密度确定建筑数量
+    for i in range(num_other_buildings):
         residential = Building(
-            f"residential_{i}", "residential",
-            (random.uniform(0, 1000), random.uniform(0, 1000)),
-            random.randint(5, 30), random.randint(100, 500),
+            f"residential_{i}", 
+            "residential",
+            (random.uniform(0, size[0]), random.uniform(0, size[1])),
+            random.randint(5, 30), 
+            random.randint(100, 500),
             {"residents": random.randint(100, 500)}
         )
         commercial = Building(
-            f"commercial_{i}", "commercial",
-            (random.uniform(0, 1000), random.uniform(0, 1000)),
-            random.randint(5, 50), random.randint(200, 1000),
+            f"commercial_{i}", 
+            "commercial",
+            (random.uniform(0, size[0]), random.uniform(0, size[1])),
+            random.randint(5, 50), 
+            random.randint(200, 1000),
             {"workers": random.randint(50, 200)}
         )
         city.add_building(residential)
@@ -111,9 +158,26 @@ def create_default_city() -> CityMap:
     for building in hospitals + fire_stations + police_stations:
         city.add_building(building)
     
-    # 初始化一些道路和交通
-    for i in range(0, 1000, 100):
-        city.roads[i:i+10, :] = 1  # 水平道路
-        city.roads[:, i:i+10] = 1  # 垂直道路
+    # 初始化道路和交通
+    road_spacing = size[0] // 10  # 每隔1/10的城市大小添加一条道路
+    road_width = max(2, road_spacing // 10)  # 道路宽度为间距的1/10，最小为2
+    
+    for i in range(0, size[0], road_spacing):
+        city.roads[i:i+road_width, :] = 1  # 水平道路
+        city.roads[:, i:i+road_width] = 1  # 垂直道路
+        
+        # 设置初始交通密度
+        city.traffic_density[i:i+road_width, :] = random.uniform(0, traffic_density)
+        city.traffic_density[:, i:i+road_width] = random.uniform(0, traffic_density)
+    
+    # 设置人口密度
+    for building in city.buildings.values():
+        x, y = int(building.location[0]), int(building.location[1])
+        radius = int(building.capacity ** 0.5)  # 影响半径与建筑容量相关
+        for i in range(max(0, x-radius), min(size[0], x+radius)):
+            for j in range(max(0, y-radius), min(size[1], y+radius)):
+                dist = ((i-x)**2 + (j-y)**2) ** 0.5
+                if dist <= radius:
+                    city.population_density[i, j] = min(1.0, city.population_density[i, j] + population_density * (1 - dist/radius))
     
     return city

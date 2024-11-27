@@ -354,7 +354,7 @@ class DataManager:
                                                        summary_so_far=self._history_data[history["name"]],
                                                        latest_development=history)
             model = "gpt-3.5-turbo-1106"
-            response = self.llm.few_shot_generate_thoughts(system_prompt="You are a helpful assistant in Minecraft.",
+            response = self.llm.generate(system_prompt="You are a helpful assistant in Minecraft.",
                                                            example_prompt=prompt,
                                                            cache_enabled=False,
                                                            api_model=model,
@@ -369,7 +369,7 @@ class DataManager:
                 prompt = HISTORY_SUMMARY_PROMPT.format(name=history["name"],
                                                        summary_so_far=self._history_data[history["name"]],
                                                        latest_development=history)
-            response = self.llm.few_shot_generate_thoughts(system_prompt="You are a helpful assistant in Minecraft.",
+            response = self.llm.generate(system_prompt="You are a helpful assistant in Minecraft.",
                                                            example_prompt=prompt,
                                                            cache_enabled=False,
                                                            max_tokens=512)
@@ -436,13 +436,13 @@ class DataManager:
         self._logger.debug(f"Example prompt: {example_prompt}")
         if isinstance(self.llm, OpenAILanguageModel):
             model = "gpt-3.5-turbo-1106"
-            response = self.llm.few_shot_generate_thoughts(system_prompt=system_prompt,
+            response = self.llm.generate(system_prompt=system_prompt,
                                                            example_prompt=example_prompt,
                                                            cache_enabled=False,
                                                            api_model=model,
                                                            max_tokens=256)
         else:
-            response = self.llm.few_shot_generate_thoughts(system_prompt=system_prompt,
+            response = self.llm.generate(system_prompt=system_prompt,
                                                            example_prompt=example_prompt,
                                                            cache_enabled=False,
                                                            max_tokens=256)

@@ -53,15 +53,15 @@ class TaskManager:
 
         self.manage_method = "update"
 
-        # delete img/*graph.png
-        for file in os.listdir("img"):
-            if "graph" in file:
-                os.remove("img/" + file)
+        # # delete img/*graph.png
+        # for file in os.listdir("img"):
+        #     if "graph" in file:
+        #         os.remove("img/" + file)
 
         # delete data/*graph.json
-        for file in os.listdir("logs"):
-            if "graph" in file:
-                os.remove("logs/" + file)
+        # for file in os.listdir("logs"):
+        #     if "graph" in file:
+        #         os.remove("logs/" + file)
                 
     def get_relevant_content_by_path(self, subtask_data: dict, query: [str]) -> list:
         # Initialize an empty dictionary to store the extracted information
@@ -173,14 +173,14 @@ class TaskManager:
             system_prompt = PART_DECOMPOSE_SYSTEM_PROMPT
             user_prompt = format_string(PART_DECOMPOSE_USER_PROMPT, {"task": {"description": description, 
                                                                      "meta-data": content},
-                                                            "agent_ability": self.agent_describe,
+                                                            "unit_ability": self.agent_describe,
                                                             "env": env_description,
                                                             "num": len(self.agent_list)})
         elif self.manage_method == "merge":
             system_prompt = DECOMPOSE_SYSTEM_PROMPT
             user_prompt = format_string(DECOMPOSE_USER_PROMPT, {"task": {"description": description, 
                                                                         "meta-data": content},
-                                                                "agent_ability": self.agent_describe,
+                                                                "unit_ability": self.agent_describe,
                                                                 "env": env_description})
         else:
             self.logger.error("Task Manager Method Error.")
@@ -188,17 +188,17 @@ class TaskManager:
         # self.logger.warning("TM DEBUG:")
         # self.logger.warning(system_prompt)
         self.logger.warning(user_prompt)
-        response = self.llm.few_shot_generate_thoughts(system_prompt, user_prompt, cache_enabled=True, json_check=True,
-                                                       check_tags=["description", "milestones", "assigned agents"])
+        response = self.llm.generate(system_prompt, user_prompt, cache_enabled=True, json_check=True,
+                                                       check_tags=["description", "milestones", "assigned_units"])
         result = extract_info(response, guard_keys=["description", "milestones"])
-        omit_keys = [("assigned agent", "list"), ("required subtasks", "list"), ("retrieval paths", "list")]
+        omit_keys = [("assigned_unit", "list"), ("required_subtasks", "list"), ("retrieval_paths", "list")]
         result = self.fill_keys_omit(result, omit_keys) # fill the result with empty data
         self.logger.warning(response)
 
         subtask_list = []
         for subtask_data in result:
             sub_content = self.get_relevant_content_by_path({"description": description, 
-                                                                     "meta-data": content}, query=subtask_data["retrieval paths"])
+                                                                     "meta-data": content}, query=subtask_data["retrieval_paths"])
             subtask = Task(name=subtask_data["description"], content=sub_content) 
             subtask.description = subtask_data["description"]
             subtask.parent_task_list = [Task(name=description, content=document)]
@@ -206,21 +206,21 @@ class TaskManager:
             subtask.criticism = "omit"
             subtask.milestones = subtask_data["milestones"]
             if self.manage_method == "update":
-                subtask.candidate_list = subtask_data["assigned agents"]
-                subtask.number = len(subtask_data["assigned agents"])
+                subtask.candidate_list = subtask_data["assigned_units"]
+                subtask.number = len(subtask_data["assigned_units"])
             else:
-                subtask.candidate_list = subtask_data["candidate list"]
-                subtask.number = int(subtask_data["minimum required agents"])
-            subtask._pre_idxs = [int(idx) for idx in subtask_data["required subtasks"]]
+                subtask.candidate_list = subtask_data["candidate_list"]
+                subtask.number = int(subtask_data["minimum_required_units"])
+            subtask._pre_idxs = [int(idx) for idx in subtask_data["required_subtasks"]]
             subtask_list.append(subtask)
 
         self.graph = self.query_graph(subtask_list)
 
         time_str = time.strftime("%Y_%m_%d_%H_%M_%S_graph", time.localtime())
         
-        self.graph.write_graph_to_md("img/" + time_str + ".md")
-        # input("press any key to continue")
-        self.graph.write_graph_to_json("logs/")
+        # self.graph.write_graph_to_md("img/" + time_str + ".md")
+        # # input("press any key to continue")
+        # self.graph.write_graph_to_json("logs/")
 
         self.status = TaskManager.idle
 
@@ -265,7 +265,7 @@ class TaskManager:
         # self.logger.warning("TM STRATEGY DEBUG:")
         # self.logger.warning(strategy_system_prompt)
         # self.logger.warning(strategy_user_prompt)
-        response = self.llm.few_shot_generate_thoughts(strategy_system_prompt, strategy_user_prompt, cache_enabled=False, json_check=True
+        response = self.llm.generate(strategy_system_prompt, strategy_user_prompt, cache_enabled=False, json_check=True
                                                     #    api_model="gpt-4-1106-preview",
                                                     #    check_tags=["reasoning", "strategy", "info"]
                                                        
@@ -349,16 +349,16 @@ class TaskManager:
 
             subtask_list = []
             for subtask_data in subtasks:
-                sub_content = self.get_relevant_content_by_path(origin_task.analyze_json(), subtask_data["retrieval paths"])
+                sub_content = self.get_relevant_content_by_path(origin_task.analyze_json(), subtask_data["retrieval_paths"])
                 subtask = Task(name=subtask_data["description"], content=sub_content) 
                 subtask.description = subtask_data["description"]
                 subtask.parent_task_list.append(origin_task)
                 subtask.goal = "omit"
                 subtask.criticism = "omit"
                 subtask.milestones = subtask_data["milestones"]
-                subtask.candidate_list = subtask_data["candidate list"]
-                subtask.number = int(subtask_data["minimum required agents"])
-                subtask._pre_idxs = [int(idx) for idx in subtask_data["required subtasks"]]
+                subtask.candidate_list = subtask_data["candidate_list"]
+                subtask.number = int(subtask_data["minimum_required_units"])
+                subtask._pre_idxs = [int(idx) for idx in subtask_data["required_subtasks"]]
                 subtask_list.append(subtask)
             sub_graph = self.query_graph(subtask_list)
             self.graph.merge_at(sub_graph, origin_task)
@@ -384,9 +384,9 @@ class TaskManager:
         time_str = time.strftime("%Y_%m_%d_%H_%M_%S_graph", time.localtime())
         
         # self.graph.draw_graph("img/" + time_str + ".png")
-        self.graph.write_graph_to_md("img/" + time_str + ".md")
+        # self.graph.write_graph_to_md("img/" + time_str + ".md")
 
-        self.graph.write_graph_to_json("logs/")
+        # self.graph.write_graph_to_json("logs/")
         self.status = TaskManager.idle
 
     def trace_format(self, task:Task):
@@ -445,7 +445,7 @@ class TaskManager:
         system_prompt = REDECOMPOSE_SYSTEM_PROMPT
         user_prompt = format_string(REDECOMPOSE_USER_PROMPT, {"task": {"description": self.task_description, 
                                                                      "meta-data": self.task_document},
-                                                            "agent_ability": self.agent_describe,
+                                                            "unit_ability": self.agent_describe,
                                                             "env": env_description, 
                                                             "agent_state": [self.dm.query_history(agent.name) for agent in self.agent_list], 
                                                             "failure_previous_subtask": self.fail_trace_description,
@@ -457,10 +457,10 @@ class TaskManager:
         # self.logger.warning("TM DEBUG:")
         # self.logger.warning(system_prompt)
         self.logger.warning(user_prompt)
-        response = self.llm.few_shot_generate_thoughts(system_prompt, user_prompt, cache_enabled=True, json_check=True,
-                                                       check_tags=["description", "milestones", "assigned agents"])
-        result = extract_info(response, guard_keys=["description", "milestones", "assigned agents"])
-        omit_keys = [("assigned agent", "list"), ("required subtasks", "list"), ("retrieval paths", "list")]
+        response = self.llm.generate(system_prompt, user_prompt, cache_enabled=True, json_check=True,
+                                                       check_tags=["description", "milestones", "assigned_units"])
+        result = extract_info(response, guard_keys=["description", "milestones", "assigned_units"])
+        omit_keys = [("assigned_unit", "list"), ("required_subtasks", "list"), ("retrieval_paths", "list")]
         result = self.fill_keys_omit(result, omit_keys)
         result
         self.logger.warning(response)
@@ -468,16 +468,20 @@ class TaskManager:
         subtask_list = []
         for subtask_data in result:
             sub_content = self.get_relevant_content_by_path({"description": self.task_description, 
-                                                                     "meta-data": self.task_document}, query=subtask_data["retrieval paths"])
+                                                                     "meta-data": self.task_document}, query=subtask_data["retrieval_paths"])
             subtask = Task(name=subtask_data["description"], content=sub_content) 
             subtask.description = subtask_data["description"]
             subtask.parent_task_list = [Task(name=self.task_description, content=self.task_document)]
             subtask.goal = "omit"
             subtask.criticism = "omit"
             subtask.milestones = subtask_data["milestones"]
-            subtask.candidate_list = subtask_data["assigned agents"]
-            subtask.number = len(subtask_data["assigned agents"])
-            _pre_idxs = [int(idx) for idx in subtask_data["required subtasks"]]
+            if self.manage_method == "update":
+                subtask.candidate_list = subtask_data["assigned_units"]
+                subtask.number = len(subtask_data["assigned_units"])
+            else:
+                subtask.candidate_list = subtask_data["candidate_list"]
+                subtask.number = int(subtask_data["minimum_required_units"])
+            _pre_idxs = [int(idx) for idx in subtask_data["required_subtasks"]]
             for idx in _pre_idxs:
                 if idx > 0 and idx < len(subtask_list):
                     subtask._pre_idxs.append(idx)
@@ -487,8 +491,8 @@ class TaskManager:
 
         time_str = time.strftime("%Y_%m_%d_%H_%M_%S_graph", time.localtime())
         
-        self.graph.write_graph_to_md("img/" + time_str + ".md")
-        # input("press any key to continue")
-        self.graph.write_graph_to_json("logs/")
+        # self.graph.write_graph_to_md("img/" + time_str + ".md")
+        # # input("press any key to continue")
+        # self.graph.write_graph_to_json("logs/")
 
         self.status = TaskManager.idle

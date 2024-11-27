@@ -5,11 +5,19 @@
 城市应急响应系统启动文件
 """
 
+import sys
+import os
+
+# 添加项目根目录到Python路径
+project_root = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(project_root)
+
 from CityEnvironment.city_emergency_env import CityEmergencyEnv
 from CityPipe.controller import GlobalController
 from CityPipe.data_manager import DataManager
 from CityPipe.task_manager import TaskManager
 from CityPipe.agent import EmergencyResponseAgent
+from Agent.emergency_agents import EmergencyRescueAgent, MedicalRescueAgent, TrafficControlAgent, DisasterMonitoringAgent, SecurityControlAgent
 import json
 import os
 
@@ -21,12 +29,14 @@ def main():
         num_fire_stations=2,         # 消防站数量
         num_police_stations=2,       # 警察局数量
         population_density=0.7,      # 人口密度
-        traffic_density=0.5          # 交通密度
+        traffic_density=0.5,         # 交通密度
+        task_id=0,                   # 任务ID
+        task_name="emergency_response" # 任务名称
     )
 
     # 加载API密钥
     api_key_path = os.path.join(os.path.dirname(__file__), "API_KEY_LIST")
-    api_key_list = json.load(open(api_key_path, "r"))["OPENAI"]
+    api_key_list = json.load(open(api_key_path, "r"))["KEY"]
     base_url = "https://api.openai.com/v1"  # OpenAI API基础URL
 
     # LLM配置
@@ -42,25 +52,51 @@ def main():
     EmergencyResponseAgent.api_key_list = api_key_list
 
     # 定义智能体工具
-    agent_tools = [
-        EmergencyResponseAgent.assess_situation,      # 评估情况
-        EmergencyResponseAgent.request_resources,     # 请求资源
-        EmergencyResponseAgent.coordinate_response,   # 协调响应
-        EmergencyResponseAgent.deploy_units,         # 部署单位
-        EmergencyResponseAgent.provide_assistance,   # 提供援助
-        EmergencyResponseAgent.report_status,        # 报告状态
-        EmergencyResponseAgent.manage_evacuation,    # 管理疏散
-        EmergencyResponseAgent.handle_casualties     # 处理伤员
+    emergency_rescue_agent_tools = [
+        EmergencyRescueAgent.organize_rescue_team,
+        EmergencyRescueAgent.create_rescue_plan,
+        EmergencyRescueAgent.identify_hazard,
     ]
 
-    # 注册智能体
-    agent_names = ["FireChief", "PoliceChief", "MedicalDirector"]
-    env.agent_register(
-        agent_tools=agent_tools,
-        agent_number=len(agent_names),
-        name_list=agent_names
-    )
+    traffic_control_agent_tools = [
+        TrafficControlAgent.implement_traffic_control,
+        TrafficControlAgent.get_traffic_status,
+        TrafficControlAgent.plan_rescue_route
+    ]
 
+    disaster_monitoring_agent_tools = [
+        DisasterMonitoringAgent.get_environmental_data,
+        DisasterMonitoringAgent.analyze_risk,
+        DisasterMonitoringAgent.predict_disaster_spread
+    ]
+
+    security_control_agent_tools = [
+        SecurityControlAgent.create_evacuation_plan,
+        SecurityControlAgent.set_security_perimeter,
+        SecurityControlAgent.deploy_security_personnel
+    ]
+
+    medical_rescue_agent_tools = [
+        MedicalRescueAgent.organize_medical_team,
+        MedicalRescueAgent.create_rescue_plan,
+        MedicalRescueAgent.get_medical_resources
+    ]
+    # 注册智能体
+    agent_names = ["emergency_rescue_agent", "traffic_control_agent", "disaster_monitoring_agent", "security_control_agent", "medical_rescue_agent"]
+    agent_tools = [
+        emergency_rescue_agent_tools,
+        traffic_control_agent_tools,
+        disaster_monitoring_agent_tools,
+        security_control_agent_tools,
+        medical_rescue_agent_tools
+    ]
+
+    for i in range(len(agent_names)):
+        env.agent_register(
+            agent_tools=agent_tools[i],
+            agent_number=1,
+            name_list=[agent_names[i]]
+        )
     # 运行环境
     with env.run():
         # 设置数据管理器

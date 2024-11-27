@@ -5,16 +5,16 @@ import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from model.init_model import init_language_model
+from LLM.init_model import init_language_model
 
 sys.path.append(os.getcwd())
 from type_define.graph import Task
-from pipeline.task_manager import TaskManager
-from pipeline.data_manager import DataManager
-from pipeline.agent import BaseAgent
-from pipeline.utils import *
-from pipeline.controller_prompt import *
-from env.env import VillagerBench
+from CityPipe.task_manager import TaskManager
+from CityPipe.data_manager import DataManager
+from CityPipe.agent import BaseAgent
+from CityPipe.utils import *
+from CityPipe.controller_prompt import *
+from CityEnvironment.city_emergency_env import CityEmergencyEnv
 import logging
 
 
@@ -26,12 +26,12 @@ class GlobalController:
     - llm_config: dict, language model configuration
     - task_manager: TaskManager, task manager
     - data_manager: DataManager, data manager
-    - env: VillagerBench, environment
+    - env: CityEmergencyEnv, environment
     - silent: bool, whether to print logs
     - max_workers: int, the maximum number of threads to use
     
     '''
-    def __init__(self, llm_config: dict, task_manager: TaskManager, data_manager: DataManager, env: VillagerBench,
+    def __init__(self, llm_config: dict, task_manager: TaskManager, data_manager: DataManager, env: CityEmergencyEnv,
                  silent: bool = False, max_workers=4):
         self.task_manager = task_manager
 
@@ -196,7 +196,7 @@ class GlobalController:
         # print(controller_user_prompt)
         # self.logger.debug("-"*15 + "assign prompt end" + "-"*15)
 
-        response = self.llm.few_shot_generate_thoughts(controller_system_prompt, controller_user_prompt, cache_enabled=True, json_check=True)
+        response = self.llm.generate(controller_system_prompt, controller_user_prompt, cache_enabled=True, json_check=True)
         # self.logger.debug("-"*10 + "response in controller" + "-"*10)
         # print(response)
         # self.logger.debug("-"*15 + "response end" + "-"*15)
@@ -216,7 +216,7 @@ class GlobalController:
         # print(controller_user_prompt)
         # self.logger.debug("-"*15 + "decompose prompt end" + "-"*15)
 
-        response = self.llm.few_shot_generate_thoughts(controller_system_prompt, controller_user_prompt, cache_enabled=True, json_check=True)
+        response = self.llm.generate(controller_system_prompt, controller_user_prompt, cache_enabled=True, json_check=True)
         self.logger.debug("-"*10 + "response in controller" + "-"*10)
         # print(response)
         self.logger.debug("-"*15 + "response end" + "-"*15)
