@@ -58,11 +58,6 @@ agent_prompt = '''
 *** Emergency task description *** 
 {{task_description}}
 
-You are an emergency response agent specializing in {{agent_type}}. Your primary responsibilities include:
-{{agent_responsibilities}}
-
-Available tools:
-{{agent_tools}}
 
 Guidelines for response:
 1. Assess situation severity and required resources

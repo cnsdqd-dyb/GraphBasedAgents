@@ -3,6 +3,8 @@ from Env.abstract_env import MultiAgentEnvironment
 import random
 from datetime import datetime, timedelta
 from CityEnvironment.city_map import CityMap, create_default_city, Building
+from Agent.emergency_agents import Agent
+import numpy as np
 
 class EmergencyEvent:
     def __init__(self, event_type: str, location: Tuple[float, float], floor: int,
@@ -28,6 +30,26 @@ class EmergencyEvent:
             elif self.severity == "medium":
                 self.casualties += random.randint(0, 1)
 
+class Resource:
+    def __init__(self, resource_id: str, resource_type: str, location: Tuple[float, float], 
+                 status: str = "available", properties: Dict = None):
+        self.id = resource_id
+        self.type = resource_type  # vehicle, equipment, personnel
+        self.location = location
+        self.status = status  # available, in_use, maintenance, offline
+        self.properties = properties or {}
+        self.assigned_to = None  # agent_id that this resource is assigned to
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "type": self.type,
+            "location": self.location,
+            "status": self.status,
+            "properties": self.properties,
+            "assigned_to": self.assigned_to
+        }
+
 class CityEmergencyEnv(MultiAgentEnvironment):
     """City emergency environment simulator"""
     
@@ -35,7 +57,10 @@ class CityEmergencyEnv(MultiAgentEnvironment):
                  num_police_stations=2, population_density=0.7, traffic_density=0.5,
                  task_id=0, host="0.0.0.0", port=25565, task_name="emergency_response",
                  virtual_debug=False):
+        """初始化城市环境"""
         super().__init__("city_emergency", task_id, host, port, task_name, virtual_debug)
+        
+        # 创建城市地图
         self.city_map = create_default_city(
             size=city_size,
             num_hospitals=num_hospitals,
@@ -44,19 +69,159 @@ class CityEmergencyEnv(MultiAgentEnvironment):
             population_density=population_density,
             traffic_density=traffic_density
         )
+        print(f"Created city map with {len(self.city_map.buildings)} buildings")
+        
+        # 初始化时间和事件
         self.current_time = datetime.now()
         self.active_events: Dict[str, EmergencyEvent] = {}
-        self.deployed_resources = {
-            "ambulances": [],  # [(unit_id, location, status), ...]
-            "fire_trucks": [],
-            "police_cars": []
-        }
-        self.resource_usage = {
-            "ambulances": {},  # {unit_id: {"start_time": datetime, "end_time": datetime}}
-            "fire_trucks": {},
-            "police_cars": {}
-        }
         
+        # 初始化资源管理
+        self.resources: Dict[str, Resource] = {}
+        self.agent_resources: Dict[str, List[str]] = {}  # agent_id -> list of resource_ids
+        self.resource_assignments: Dict[str, List[str]] = {}  # agent_id -> list of resource_ids
+        
+        # 初始化基础资源
+        self._initialize_resources()
+        
+    def _initialize_resources(self):
+        """初始化城市环境中的基础资源"""
+        # 初始化救护车
+        for i in range(5):
+            resource_id = f"ambulance_{i}"
+            location = self._get_building_location("hospital")
+            self.resources[resource_id] = Resource(
+                resource_id=resource_id,
+                resource_type="vehicle",
+                location=location,
+                properties={"vehicle_type": "ambulance", "capacity": 2}
+            )
+            
+        # 初始化消防车
+        for i in range(3):
+            resource_id = f"fire_truck_{i}"
+            location = self._get_building_location("fire_station")
+            self.resources[resource_id] = Resource(
+                resource_id=resource_id,
+                resource_type="vehicle",
+                location=location,
+                properties={"vehicle_type": "fire_truck", "water_capacity": 1000}
+            )
+            
+        # 初始化医务人员
+        for i in range(10):
+            resource_id = f"medic_{i}"
+            location = self._get_building_location("hospital")
+            self.resources[resource_id] = Resource(
+                resource_id=resource_id,
+                resource_type="personnel",
+                location=location,
+                properties={"role": "medic", "skill_level": random.randint(1, 5)}
+            )
+            
+        # 初始化消防员
+        for i in range(8):
+            resource_id = f"firefighter_{i}"
+            location = self._get_building_location("fire_station")
+            self.resources[resource_id] = Resource(
+                resource_id=resource_id,
+                resource_type="personnel",
+                location=location,
+                properties={"role": "firefighter", "skill_level": random.randint(1, 5)}
+            )
+            
+        # 初始化医疗设备
+        for i in range(15):
+            resource_id = f"med_equipment_{i}"
+            location = self._get_building_location("hospital")
+            self.resources[resource_id] = Resource(
+                resource_id=resource_id,
+                resource_type="equipment",
+                location=location,
+                properties={"equipment_type": "medical", "condition": "good"}
+            )
+
+        # 初始化警车
+        for i in range(4):
+            resource_id = f"police_car_{i}"
+            location = self._get_building_location("police_station")
+            self.resources[resource_id] = Resource(
+                resource_id=resource_id,
+                resource_type="vehicle",
+                location=location,
+                properties={"vehicle_type": "police_car", "capacity": 4}
+            )
+            
+        # 初始化警察
+        for i in range(12):
+            resource_id = f"police_{i}"
+            location = self._get_building_location("police_station")
+            self.resources[resource_id] = Resource(
+                resource_id=resource_id,
+                resource_type="personnel",
+                location=location,
+                properties={"role": "police", "skill_level": random.randint(1, 5)}
+            )
+
+    def _get_building_location(self, building_type: str) -> Tuple[float, float]:
+        """获取随机建筑位置"""
+        buildings = [b for b in self.city_map.buildings.values() if b.type == building_type]
+        print(f"Found {len(buildings)} buildings of type {building_type}")
+        print(f"All building types: {[b.type for b in self.city_map.buildings.values()]}")
+        if buildings:
+            building = random.choice(buildings)
+            return building.location
+        print(f"Warning: No buildings found of type {building_type}, returning default location (0, 0)")
+        return (0, 0)
+
+    def assign_resource(self, resource_id: str, agent_id: str) -> bool:
+        """将资源分配给特定的agent"""
+        if resource_id not in self.resources:
+            return False
+        
+        resource = self.resources[resource_id]
+        if resource.status != "available":
+            return False
+            
+        if agent_id not in self.resource_assignments:
+            self.resource_assignments[agent_id] = []
+            
+        resource.status = "in_use"
+        resource.assigned_to = agent_id
+        self.resource_assignments[agent_id].append(resource_id)
+        return True
+        
+    def release_resource(self, resource_id: str) -> bool:
+        """释放资源"""
+        if resource_id not in self.resources:
+            return False
+            
+        resource = self.resources[resource_id]
+        if resource.assigned_to:
+            self.resource_assignments[resource.assigned_to].remove(resource_id)
+            resource.assigned_to = None
+            resource.status = "available"
+        return True
+        
+    def update_resource_status(self, resource_id: str, new_status: str, 
+                             new_location: Tuple[float, float] = None) -> bool:
+        """更新资源状态和位置"""
+        if resource_id not in self.resources:
+            return False
+            
+        resource = self.resources[resource_id]
+        resource.status = new_status
+        if new_location:
+            resource.location = new_location
+        return True
+        
+    def get_agent_resources(self, agent_id: str) -> List[Dict]:
+        """获取分配给特定agent的所有资源状态"""
+        if agent_id not in self.resource_assignments:
+            return []
+            
+        return [self.resources[rid].to_dict() 
+                for rid in self.resource_assignments[agent_id]]
+                
     def init_emergency_scenario(self, scenario_type: str, location: Tuple[float, float] = None,
                               floor: int = None, severity: str = "medium") -> Tuple[bool, Dict, str]:
         """初始化突发事件场景"""
@@ -182,7 +347,7 @@ class CityEmergencyEnv(MultiAgentEnvironment):
                     "type": e.type,
                     "location": e.location,
                     "floor": e.floor,
-                    "start_time": e.start_time,
+                    "start_time": e.start_time.isoformat(),
                     "severity": e.severity,
                     "properties": e.properties,
                     "casualties": e.casualties,
@@ -219,6 +384,97 @@ class CityEmergencyEnv(MultiAgentEnvironment):
         except Exception as e:
             return False, {}, f"Failed to get resource status: {str(e)}"
 
+    def get_environmental_data(self) -> Tuple[bool, Dict, str]:
+        """获取环境数据"""
+        try:
+            # 获取事件和建筑物的影响
+            total_risk = 0
+            affected_areas = set()
+            
+            # 检查活跃事件的影响
+            for event in self.active_events.values():
+                if event.type in ["fire", "chemical_leak", "explosion"]:
+                    total_risk += 1
+                    affected_areas.add((int(event.location[0]), int(event.location[1])))
+            
+            # 计算受影响区域的环境数据
+            if affected_areas:
+                avg_population = np.mean([
+                    self.city_map.population_density[x, y] 
+                    for x, y in affected_areas
+                    if 0 <= x < self.city_map.size[0] and 0 <= y < self.city_map.size[1]
+                ])
+            else:
+                avg_population = 0.1  # 基准人口密度
+            
+            # 基于事件和人口密度计算环境数据
+            base_temp = 25  # 基准温度
+            base_gas = 5    # 基准气体浓度
+            
+            data = {
+                "temperature": base_temp + total_risk * 5,  # 每个事件增加5度
+                "humidity": max(30, 70 - total_risk * 10),  # 事件降低湿度
+                "wind_speed": 5 + total_risk * 2,           # 事件增加风速
+                "wind_direction": random.uniform(0, 360),   # 随机风向
+                "gas_concentration": base_gas + total_risk * 3,  # 事件增加气体浓度
+                "air_quality": max(50, 300 - total_risk * 50),   # 事件降低空气质量
+                "visibility": max(2, 10 - total_risk),      # 事件降低能见度
+                "population_density": avg_population,
+                "active_events": total_risk
+            }
+            return True, data, "Environmental data retrieved based on current events and population density"
+            
+        except Exception as e:
+            return False, {}, f"Failed to get environmental data: {str(e)}"
+
+    def get_traffic_info(self) -> Tuple[bool, Dict, str]:
+        """获取交通信息"""
+        try:
+            roads = {}
+            road_spacing = self.city_map.size[0] // 10
+            road_width = max(2, road_spacing // 10)
+            
+            # 获取道路网格的交通信息
+            for i in range(0, self.city_map.size[0], road_spacing):
+                road_id = f"road_h_{i}"  # 水平道路
+                traffic_density = np.mean(self.city_map.traffic_density[i:i+road_width, :])
+                
+                # 检查是否有事件影响这条道路
+                road_events = []
+                for event_id, event in self.active_events.items():
+                    if abs(event.location[0] - i) < road_width:
+                        road_events.append(event_id)
+                
+                roads[road_id] = {
+                    "traffic_density": float(traffic_density),
+                    "average_speed": max(5, 60 * (1 - traffic_density)),  # 基于交通密度计算平均速度
+                    "status": "blocked" if road_events else "normal" if traffic_density < 0.5 else "congested",
+                    "incidents": len(road_events),
+                    "affected_by_events": road_events
+                }
+                
+                road_id = f"road_v_{i}"  # 垂直道路
+                traffic_density = np.mean(self.city_map.traffic_density[:, i:i+road_width])
+                
+                # 检查是否有事件影响这条道路
+                road_events = []
+                for event_id, event in self.active_events.items():
+                    if abs(event.location[1] - i) < road_width:
+                        road_events.append(event_id)
+                
+                roads[road_id] = {
+                    "traffic_density": float(traffic_density),
+                    "average_speed": max(5, 60 * (1 - traffic_density)),
+                    "status": "blocked" if road_events else "normal" if traffic_density < 0.5 else "congested",
+                    "incidents": len(road_events),
+                    "affected_by_events": road_events
+                }
+            
+            return True, roads, "Traffic information retrieved based on city map and active events"
+            
+        except Exception as e:
+            return False, {}, f"Failed to get traffic information: {str(e)}"
+
     def get_all_agent_description_tiny(self) -> dict:
         """
         Get brief descriptions of all agents in the environment based on their tools.
@@ -230,16 +486,24 @@ class CityEmergencyEnv(MultiAgentEnvironment):
         for agent in self.agent_pool:
             tool_descriptions = []
             for tool in agent.tools:
+                print(tool)
                 if hasattr(tool, '__doc__') and tool.__doc__:
-                    tool_descriptions.append(tool.__doc__.strip())
+                    tool_descriptions.append(f"{tool.name} -- {tool.__doc__.strip()}")
             descriptions[agent.name] = "; ".join(tool_descriptions)
+        print(descriptions)
+        input()
         return descriptions
         
-    def agent_register(self, agent_tools=[], agent_number: int = 1, name_list: [str] = []):
-        """Register agents to the environment"""
-        super().agent_register(agent_tools, agent_number, name_list)
-        # Additional registration logic can be added here
-        return True
+    def agent_register(self, agent_tools=[], agent_number: int = 1, name_list: [str] = [],
+                       model: str = "gpt-4-1106-preview", api_key_list=[]):
+        self.logger.warning(
+            "[warning but dont worry] agent number not equal to names number, random names will be used")
+        assert len(name_list) == agent_number, "agent number not equal to names number"
+
+        for i in range(agent_number):
+            agent = Agent(name_list[i], self, tools=agent_tools, model=model, api_key_list=api_key_list)
+            self.agent_pool.append(agent)
+            self.logger.info(f"Agent {name_list[i]} registered successfully")
 
     def launch(self, debug: bool = False, fast_api=False):
         """Launch the environment"""
@@ -247,19 +511,28 @@ class CityEmergencyEnv(MultiAgentEnvironment):
         self.launch_time = datetime.now()
         return True
 
+    def agent_status(self, agent_name: str):  # 返回一个dict
+        for agent in self.agent_pool:
+            if agent.name == agent_name:
+                return Agent.get_status(agent_name)
+        return {"message": f"agent {agent_name} not found", "status": False}
+    
     def step(self, agent_name: str, action: str, max_turn: int = 2):
-        """Execute one step in the environment"""
-        try:
-            # Update environment state
-            self.update_environment()
-            
-            # Process agent action
-            # This is a placeholder - implement actual action processing logic
-            result = {"status": "success", "action": action}
-            
-            return True, result, "Step executed successfully"
-        except Exception as e:
-            return False, {}, f"Failed to execute step: {str(e)}"
+        '''
+        final_answer, {"input": response["input"], "action_list": action_list, "final_answer": final_answer}
+        '''
+        self.logger.debug("=" * 20 + " Env Step " + "=" * 20)
+        self.logger.info(f"agent {agent_name}")
+        self.logger.info("=" * 20 + " Env Step " + "=" * 20)
+        find_agent = False
+        for agent in self.agent_pool:
+            if agent.name == agent_name:
+                feedback, detail = agent.run(action, max_turn=max_turn)
+                return feedback, detail
+
+        if not find_agent:
+            self.logger.warning(f"agent {agent_name} not found")
+            return None, {"input": None, "action_list": None, "final_answer": None}
 
     def stop(self):
         """Stop the environment"""

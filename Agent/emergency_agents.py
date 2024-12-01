@@ -1,385 +1,471 @@
 from typing import Dict, List, Tuple
 from .abstract_agent import AbstractAgent
-from CityEnvironment.city_emergency_env import CityEmergencyEnv
+from langchain.agents import tool, initialize_agent, AgentType
+from langchain.chat_models import ChatOpenAI
+from langchain.llms import OpenAI
+import random
+import time
+from langchain.load.dump import dumps
+import json
 from langchain.agents import tool
+    
 
-class MedicalRescueAgent(AbstractAgent):
-    def __init__(self, name, env: CityEmergencyEnv, local_port=5000, model="gpt-4-1106-preview", api_key_list=[]):
+class Agent(AbstractAgent):
+    base_url = "https://api.openai.com/v1"
+    def __init__(self, name, env, local_port=5000, model="gpt-4-1106-preview", api_key_list=[], tools=[]):
         super().__init__(name, local_port, model, api_key_list)
-        self.env = env
-        self.setup_tools()
-        
-    def setup_tools(self):
-        self.tools = [
-            self.get_medical_resources,
-            self.organize_medical_team,
-            self.create_rescue_plan
+        Agent.env = env
+        self.tools = tools
+
+    def medical_rescue_agent_tools():
+        return [
+            Agent.get_medical_resources,
+            Agent.organize_medical_team,
+            Agent.get_team_status,
+            Agent.create_rescue_plan
         ]
+
+    def emergency_rescue_agent_tools():
+        return [
+            Agent.get_rescue_resources,
+            Agent.organize_rescue_team,
+            Agent.get_team_status,
+            Agent.deploy_rescue_team
+        ]
+
+    def security_control_agent_tools():
+        return [
+            Agent.get_security_resources,
+            Agent.organize_security_team,
+            Agent.get_team_status,
+            Agent.deploy_security_team
+        ]
+    
+    def disaster_monitoring_agent_tools():
+        return [
+            Agent.get_environmental_data,
+            Agent.analyze_risk,
+            Agent.get_team_status,
+            Agent.predict_disaster_spread
+        ]
+    
+    def traffic_control_agent_tools():
+        return [
+            Agent.get_traffic_status,
+            Agent.plan_rescue_route,
+            Agent.get_team_status,
+            Agent.implement_traffic_control
+        ]
+    
+    def tools():
+        return [
+            Agent.medical_rescue_agent_tools(),
+            Agent.emergency_rescue_agent_tools(),
+            Agent.security_control_agent_tools(),
+            Agent.disaster_monitoring_agent_tools(),
+            Agent.traffic_control_agent_tools()
+        ]
+
+    def run(self, instruction: str, player_name_list=[], max_turn=10):
+        assert len(self.api_key_list) > 0, "Please set the api_key_list in Agent class."
+        # dynamic api key
+        action_list = []
+
+        if "instruct" in self.model and "gpt" in self.model:
+            from langchain.llms import OpenAI
+            self.llm = OpenAI(model=self.model, temperature=0, max_tokens=256, openai_api_key=random.choice(self.api_key_list), base_url=Agent.base_url)
+        elif "gpt" in self.model:
+            from langchain.chat_models import ChatOpenAI
+            self.llm = ChatOpenAI(model=self.model, temperature=0, max_tokens=256, openai_api_key=random.choice(self.api_key_list), base_url=Agent.base_url)
+
+        while max_turn > 0:
+            try:
+                agent = initialize_agent(
+                    tools=self.tools,
+                    llm=self.llm,
+                    verbose=True,
+                    agent=AgentType.STRUCTURED_CHAT_ZERO_SHOT_REACT_DESCRIPTION,
+                    return_intermediate_steps=True,
+                    max_execution_time=120,  # seconds
+                    max_iterations=6,  # 决定了最大的迭代次数
+                )
+                
+                input_text = f"You are in team {self.name}.\n{instruction}"
+                if player_name_list:
+                    input_text = f"You should control {player_name_list} work together.\n{instruction}"
+                
+                response = agent({"input":input_text})
+                action_list = []
+                response = json.loads(dumps(response, pretty=True))
+                for step in response["intermediate_steps"]:
+                    action_list.append({"action": step[0]["kwargs"], "feedback": step[1]})
+                final_answer = response["output"]
+                # save the action_list and final_answer
+
+                with open(f"data/history/{hash(response['input'])}.json", "w") as f:
+                    json.dump({"input": response["input"], "action_list": action_list, "final_answer": final_answer}, f,
+                            indent=4)
+                return final_answer, {"input": response["input"], "action_list": action_list, "final_answer": final_answer}
+
+                        
+            except Exception as e:
+                print(f"Error occurred: {e}")
+                print("Retrying...")
+                time.sleep(1)
+                max_turn -= 1
         
+        return "Task execution failed.", {"input": instruction, "action_list": action_list, "final_answer": "Task execution failed."}
+    
+    # ----------------- Medical Rescue Agent -----------------
     @tool
-    def get_medical_resources(self) -> Dict:
-        """Get information about available medical resources"""
-        status, data, desc = self.env.get_building_info("hospital")
+    def get_medical_resources() -> Dict:
+        """获取可用的医疗资源信息"""
+        resources = []
+        for resource_id, resource in Agent.env.resources.items():
+            if (resource.type == "vehicle" and resource.properties.get("vehicle_type") == "ambulance") or \
+               (resource.type == "personnel" and resource.properties.get("role") == "medic") or \
+               (resource.type == "equipment" and resource.properties.get("equipment_type") == "medical"):
+                if resource.status == "available":
+                    resources.append(resource.to_dict())
         return {
-            "status": status,
-            "data": data if status else {},
-            "desc": desc
+            "message": {"available_resources": resources},
+            "status": True
         }
         
     @tool
-    def organize_medical_team(self, hospital_id: str, team_size: int) -> Dict:
-        """Organize a medical rescue team from a specific hospital"""
-        # 获取医院信息
-        status, hospitals, desc = self.env.get_building_info("hospital")
-        if not status or hospital_id not in hospitals:
-            return {
-                "status": False,
-                "data": {},
-                "desc": "Hospital not found"
-            }
+    def organize_medical_team(unit_name: str, required_resources: Dict[str, int]) -> Dict:
+        """
+        Args:
+            required_resources: 需要的资源数量，例如 ("ambulance": 1, "medic": 2, "medical_equipment": 2)
+        """
+        assigned_resources = []
         
-        hospital = hospitals[hospital_id]
-        if hospital.resources["doctors"] < team_size:
+        # 遍历所有资源类型
+        for resource_type, count in required_resources.items():
+            assigned_count = 0
+            for resource_id, resource in Agent.env.resources.items():
+                if assigned_count >= count:
+                    break
+                    
+                # 检查资源类型是否匹配
+                if (resource_type == "ambulance" and resource.type == "vehicle" and 
+                    resource.properties.get("vehicle_type") == "ambulance") or \
+                   (resource_type == "medic" and resource.type == "personnel" and 
+                    resource.properties.get("role") == "medic") or \
+                   (resource_type == "medical_equipment" and resource.type == "equipment" and 
+                    resource.properties.get("equipment_type") == "medical"):
+                    
+                    if resource.status == "available":
+                        if Agent.env.assign_resource(resource_id, unit_name):
+                            assigned_resources.append(resource.to_dict())
+                            assigned_count += 1
+                            
+        if len(assigned_resources) < sum(required_resources.values()):
             return {
-                "status": False,
-                "data": {},
-                "desc": "Insufficient medical personnel"
-            }
-            
-        # 部署救护车
-        status, deployment, desc = self.env.deploy_resource(
-            "ambulances", f"{hospital_id}_ambulance_1",
-            hospital.location, self.env.active_events[0].location
-        )
-        
-        if not status:
-            return {
-                "status": False,
-                "data": {},
-                "desc": f"Failed to deploy ambulance: {desc}"
+                "message": {"assigned_resources": assigned_resources},
+                "status": False
             }
             
         return {
-            "status": True,
-            "data": {
-                "team": {
-                    "hospital": hospital_id,
-                    "size": team_size,
-                    "ambulance": deployment
-                }
+            "message": {"assigned_resources": assigned_resources},
+            "status": True
+        }
+
+    @tool
+    def get_team_status(unit_name: str) -> Dict:
+        """获取当前医疗队伍的状态"""
+        status = Agent.env.get_agent_resources(unit_name)
+        return {
+            "message": {"team_resources": status},
+            "status": True
+        }
+        
+    @tool
+    def create_rescue_plan(unit_name: str, event_location: Tuple[float, float]) -> Dict:
+        """基于事件位置创建救援计划"""
+        team_status = Agent.get_team_status(unit_name)
+        if not team_status["message"]["team_resources"]:
+            return {
+                "message": "No team resources available for rescue",
+                "status": False
+            }
+            
+        # 更新所有团队资源的位置
+        for resource in team_status["message"]["team_resources"]:
+            Agent.env.update_resource_status(
+                resource["id"],
+                resource["status"],
+                event_location
+            )
+            
+        return {
+            "message": {
+                "event_location": event_location,
+                "team_resources": team_status["message"]["team_resources"]
             },
-            "desc": f"Successfully organized medical team from {hospital_id}"
+            "status": True
+        }
+    
+    # ----------------- Emergency Rescue Agent -----------------
+    @tool
+    def get_rescue_resources() -> Dict:
+        """获取可用的救援资源信息"""
+        resources = []
+        for resource_id, resource in Agent.env.resources.items():
+            if (resource.type == "vehicle" and resource.properties.get("vehicle_type") == "fire_truck") or \
+               (resource.type == "personnel" and resource.properties.get("role") == "firefighter"):
+                if resource.status == "available":
+                    resources.append(resource.to_dict())
+        return {
+            "message": {"available_resources": resources},
+            "status": True
         }
         
     @tool
-    def create_rescue_plan(self, event_id: str) -> Dict:
-        """Create a medical rescue plan based on the situation"""
-        # 获取事件信息
-        status, events, desc = self.env.get_event_info(event_id)
-        if not status:
+    def organize_rescue_team(unit_name: str, required_resources: Dict[str, int]) -> Dict:
+        """
+        组织救援队伍
+        Args:
+            unit_name: emergency_rescue_agent / traffic_control_agent / disaster_monitoring_agent / security_control_agent / medical_rescue_agent
+            required_resources: 需要的资源数量，例如 ("fire_truck": 1, "firefighter": 4)
+        """
+        assigned_resources = []
+        
+        for resource_type, count in required_resources.items():
+            assigned_count = 0
+            for resource_id, resource in Agent.env.resources.items():
+                if assigned_count >= count:
+                    break
+                    
+                if (resource_type == "fire_truck" and resource.type == "vehicle" and 
+                    resource.properties.get("vehicle_type") == "fire_truck") or \
+                   (resource_type == "firefighter" and resource.type == "personnel" and 
+                    resource.properties.get("role") == "firefighter"):
+                    
+                    if resource.status == "available":
+                        if Agent.env.assign_resource(resource_id, unit_name):
+                            assigned_resources.append(resource.to_dict())
+                            assigned_count += 1
+                            
+        if len(assigned_resources) < sum(required_resources.values()):
             return {
-                "status": False,
-                "data": {},
-                "desc": f"Event not found: {desc}"
+                "message": {"assigned_resources": assigned_resources},
+                "status": False
             }
             
-        event = events[event_id]
-        
-        # 获取最近的医院
-        status, hospitals, desc = self.env.get_building_info("hospital")
-        if not status:
-            return {
-                "status": False,
-                "data": {},
-                "desc": f"Failed to get hospital information: {desc}"
-            }
-            
-        # 找到最近的医院
-        nearest_hospital = min(
-            hospitals.items(),
-            key=lambda x: ((x[1].location[0] - event["location"][0])**2 + 
-                         (x[1].location[1] - event["location"][1])**2)**0.5
-        )
-        
-        # 根据事件严重程度决定资源分配
-        required_resources = {
-            "high": {"ambulances": 3, "doctors": 5, "nurses": 10},
-            "medium": {"ambulances": 2, "doctors": 3, "nurses": 6},
-            "low": {"ambulances": 1, "doctors": 2, "nurses": 4}
-        }[event["severity"]]
-        
         return {
-            "status": True,
-            "data": {
-                "plan": {
-                    "primary_hospital": nearest_hospital[0],
-                    "required_resources": required_resources,
-                    "estimated_response_time": self.env.city_map.get_travel_time(
-                        nearest_hospital[1].location,
-                        event["location"]
-                    ),
-                    "backup_hospitals": [
-                        h for h in hospitals if h != nearest_hospital[0]
-                    ][:2]
-                }
+            "message": {"assigned_resources": assigned_resources},
+            "status": True
+        }
+
+    @tool
+    def deploy_rescue_team(unit_name: str, location: Tuple[float, float]) -> Dict:
+        """部署救援队伍到指定位置"""
+        team_status = Agent.get_team_status(unit_name)
+        if not team_status["message"]["team_resources"]:
+            return {
+                "message": "No team resources available for deployment",
+                "status": False
+            }
+            
+        # 更新所有团队资源的位置
+        for resource in team_status["message"]["team_resources"]:
+            Agent.env.update_resource_status(
+                resource["id"],
+                resource["status"],
+                location
+            )
+            
+        return {
+            "message": {
+                "deployment_location": location,
+                "team_resources": team_status["message"]["team_resources"]
             },
-            "desc": f"Created rescue plan with {nearest_hospital[0]} as primary hospital"
+            "status": True
         }
-        
-    def run(self, instruction: str, **kwargs):
-        """Run the medical rescue agent with given instruction"""
-        # 使用LangChain来处理指令并调用相应的工具
-        pass
-
-class EmergencyRescueAgent(AbstractAgent):
-    def __init__(self, name, env: CityEmergencyEnv, local_port=5000, model="gpt-4-1106-preview", api_key_list=[]):
-        super().__init__(name, local_port, model, api_key_list)
-        self.env = env
-        self.setup_tools()
-        
-    def setup_tools(self):
-        self.tools = [
-            self.identify_hazard,
-            self.organize_rescue_team,
-            self.create_rescue_plan
-        ]
-        
+    
+    # ----------------- Security Control Agent -----------------
     @tool
-    def identify_hazard(self, location: tuple) -> Dict:
-        """Identify hazard information at given location"""
-        status, env_data, desc = self.env.get_environmental_data()
-        if not status:
-            return {"success": False, "error": desc}
-            
-        # Analyze hazard based on environmental data
-        hazard_level = "HIGH" if env_data["gas_concentration"] > 10.0 else "MEDIUM" if env_data["gas_concentration"] > 5.0 else "LOW"
-        
+    def get_security_resources() -> Dict:
+        """获取可用的安保资源信息"""
+        resources = []
+        for resource_id, resource in Agent.env.resources.items():
+            if (resource.type == "vehicle" and resource.properties.get("vehicle_type") == "police_car") or \
+               (resource.type == "personnel" and resource.properties.get("role") == "police"):
+                if resource.status == "available":
+                    resources.append(resource.to_dict())
         return {
-            "success": True,
-            "hazard_info": {
-                "type": "gas_leak",
-                "level": hazard_level,
-                "environmental_data": env_data
-            }
+            "message": {"available_resources": resources},
+            "status": True
         }
         
     @tool
-    def organize_rescue_team(self, team_type: str, size: int) -> Dict:
-        """Organize specific type of rescue team"""
-        status, units, desc = self.env.get_rescue_units_info()
-        if not status:
-            return {"success": False, "error": desc}
-            
-        available_units = [u for u in units.items() if u[1]["type"] == team_type and u[1]["personnel"] >= size]
-        if not available_units:
-            return {"success": False, "error": f"No available {team_type} units with sufficient personnel"}
-            
-        return {
-            "success": True,
-            "team": {
-                "unit_id": available_units[0][0],
-                "type": team_type,
-                "size": size
-            }
-        }
+    def organize_security_team(unit_name: str, required_resources: Dict[str, int]) -> Dict:
+        """
+        组织安保队伍
+        Args:
+            unit_name: emergency_rescue_agent / traffic_control_agent / disaster_monitoring_agent / security_control_agent / medical_rescue_agent
+            required_resources: 需要的资源数量，例如 ("police_car": 2, "police": 4)
+        """
+        assigned_resources = []
         
-    @tool
-    def create_rescue_plan(self, hazard_type: str, location: tuple) -> Dict:
-        """Create a rescue plan based on hazard type and location"""
-        # Get environmental data for planning
-        env_status, env_data, env_desc = self.env.get_environmental_data()
-        if not env_status:
-            return {"success": False, "error": env_desc}
-            
-        # Get available rescue units
-        units_status, units, units_desc = self.env.get_rescue_units_info()
-        if not units_status:
-            return {"success": False, "error": units_desc}
+        for resource_type, count in required_resources.items():
+            assigned_count = 0
+            for resource_id, resource in Agent.env.resources.items():
+                if assigned_count >= count:
+                    break
+                    
+                if (resource_type == "police_car" and resource.type == "vehicle" and 
+                    resource.properties.get("vehicle_type") == "police_car") or \
+                   (resource_type == "police" and resource.type == "personnel" and 
+                    resource.properties.get("role") == "police"):
+                    
+                    if resource.status == "available":
+                        if Agent.env.assign_resource(resource_id, unit_name):
+                            assigned_resources.append(resource.to_dict())
+                            assigned_count += 1
+                            
+        if len(assigned_resources) < sum(required_resources.values()):
+            return {
+                "message": {"assigned_resources": assigned_resources},
+                "status": False
+            }
             
         return {
-            "success": True,
-            "plan": {
-                "hazard_type": hazard_type,
-                "location": location,
-                "required_teams": [
-                    {"type": "firefighters", "size": 5},
-                    {"type": "hazmat", "size": 3}
-                ],
-                "evacuation_radius": 200 if env_data["gas_concentration"] > 10.0 else 100
-            }
+            "message": {"assigned_resources": assigned_resources},
+            "status": True
         }
 
-class SecurityControlAgent(AbstractAgent):
-    def __init__(self, name, env: CityEmergencyEnv, local_port=5000, model="gpt-4-1106-preview", api_key_list=[]):
-        super().__init__(name, local_port, model, api_key_list)
-        self.env = env
-        self.setup_tools()
-        
-    def setup_tools(self):
-        self.tools = [
-            self.set_security_perimeter,
-            self.create_evacuation_plan,
-            self.deploy_security_personnel
-        ]
-        
     @tool
-    def set_security_perimeter(self, center: tuple, radius: float) -> Dict:
-        """Set up security perimeter around incident"""
-        status, result, desc = self.env.set_danger_zone([(center[0], center[1], radius)])
-        if not status:
-            return {"success": False, "error": desc}
+    def deploy_security_team(unit_name:str, locations: List[Tuple[float, float]]) -> Dict:
+        """在多个位置部署安保队伍"""
+        team_status = Agent.get_team_status(unit_name)
+        if not team_status["message"]["team_resources"]:
+            return {
+                "message": "No team resources available for deployment",
+                "status": False
+            }
             
-        return {
-            "success": True,
-            "perimeter": {
-                "center": center,
-                "radius": radius
-            }
-        }
+        # 将资源平均分配到各个位置
+        resources = team_status["message"]["team_resources"]
+        resources_per_location = len(resources) // len(locations)
         
-    @tool
-    def create_evacuation_plan(self, danger_zones: List[tuple]) -> Dict:
-        """Create evacuation plan based on danger zones"""
-        # Get traffic information for planning routes
-        status, roads, desc = self.env.get_traffic_info()
-        if not status:
-            return {"success": False, "error": desc}
+        deployments = []
+        for i, location in enumerate(locations):
+            start_idx = i * resources_per_location
+            end_idx = start_idx + resources_per_location if i < len(locations) - 1 else len(resources)
             
+            location_resources = resources[start_idx:end_idx]
+            for resource in location_resources:
+                Agent.env.update_resource_status(
+                    resource["id"],
+                    resource["status"],
+                    location
+                )
+                deployments.append({
+                    "resource": resource,
+                    "location": location
+                })
+                
         return {
-            "success": True,
-            "evacuation_plan": {
-                "zones": danger_zones,
-                "assembly_points": [(x + 300, y + 300) for x, y, _ in danger_zones],
-                "routes": []  # Would be populated based on road network
-            }
-        }
-        
-    @tool
-    def deploy_security_personnel(self, locations: List[tuple]) -> Dict:
-        """Deploy security personnel to specific locations"""
-        return {
-            "success": True,
-            "deployment": {
-                "locations": locations,
-                "personnel_count": len(locations) * 2
-            }
+            "message": {
+                "deployment_locations": locations,
+                "deployments": deployments
+            },
+            "status": True
         }
 
-class DisasterMonitoringAgent(AbstractAgent):
-    def __init__(self, name, env: CityEmergencyEnv, local_port=5000, model="gpt-4-1106-preview", api_key_list=[]):
-        super().__init__(name, local_port, model, api_key_list)
-        self.env = env
-        self.setup_tools()
-        
-    def setup_tools(self):
-        self.tools = [
-            self.get_environmental_data,
-            self.analyze_risk,
-            self.predict_disaster_spread
-        ]
-        
+    # ----------------- Disaster Monitoring Agent -----------------
     @tool
-    def get_environmental_data(self) -> Dict:
-        """Get current environmental data"""
-        status, data, desc = self.env.get_environmental_data()
-        if not status:
-            return {"success": False, "error": desc}
-            
-        return {"success": True, "data": data}
-        
+    def get_environmental_data() -> Dict:
+        """获取环境数据"""
+        success, data, msg = Agent.env.get_environmental_data()
+        if success:
+            return {"message": data, "status": True}
+        else:
+            return {"message": msg, "status": False}
+
     @tool
-    def analyze_risk(self, env_data: Dict) -> Dict:
-        """Analyze risk based on environmental data"""
+    def analyze_risk(env_data: Dict) -> Dict:
+        """分析风险"""
         if "gas_concentration" not in env_data:
-            return {"success": False, "error": "Invalid environmental data"}
+            return {"message": "Invalid environmental data", "status": False}
             
         risk_level = "HIGH" if env_data["gas_concentration"] > 10.0 else \
                     "MEDIUM" if env_data["gas_concentration"] > 5.0 else "LOW"
                     
         return {
-            "success": True,
-            "risk_assessment": {
+            "message": {
                 "level": risk_level,
                 "factors": {
                     "gas_concentration": env_data["gas_concentration"],
                     "wind_speed": env_data["wind_speed"]
                 }
-            }
+            },
+            "status": True
         }
-        
+
     @tool
-    def predict_disaster_spread(self, current_data: Dict) -> Dict:
-        """Predict how the disaster might spread"""
+    def predict_disaster_spread(current_data: Dict) -> Dict:
+        """预测灾害蔓延"""
         if "wind_direction" not in current_data or "wind_speed" not in current_data:
-            return {"success": False, "error": "Missing wind data"}
+            return {"message": "Missing wind data", "status": False}
             
         # Simple prediction based on wind
         spread_direction = current_data["wind_direction"]
         spread_speed = current_data["wind_speed"] * 0.5
         
         return {
-            "success": True,
-            "prediction": {
+            "message": {
                 "direction": spread_direction,
                 "speed": spread_speed,
                 "affected_area_growth": f"{spread_speed * 10:.1f} meters per minute"
-            }
+            },
+            "status": True
         }
 
-class TrafficControlAgent(AbstractAgent):
-    def __init__(self, name, env: CityEmergencyEnv, local_port=5000, model="gpt-4-1106-preview", api_key_list=[]):
-        super().__init__(name, local_port, model, api_key_list)
-        self.env = env
-        self.setup_tools()
-        
-    def setup_tools(self):
-        self.tools = [
-            self.get_traffic_status,
-            self.plan_rescue_route,
-            self.implement_traffic_control
-        ]
-        
+    # ----------------- Traffic Control Agent -----------------
     @tool
     def get_traffic_status(self) -> Dict:
-        """Get current traffic status"""
-        status, roads, desc = self.env.get_traffic_info()
+        """获取当前交通状态"""
+        status, roads, desc = Agent.env.get_traffic_info()
         if not status:
-            return {"success": False, "error": desc}
-            
-        return {"success": True, "traffic_data": roads}
+            return {"message": desc, "status": False}
         
+        return {"message": roads, "status": True}
+
     @tool
-    def plan_rescue_route(self, start: tuple, end: tuple) -> Dict:
-        """Plan optimal rescue route between two points"""
-        status, roads, desc = self.env.get_traffic_info()
+    def plan_rescue_route(start: tuple, end: tuple) -> Dict:
+        """规划救援路线"""
+        status, roads, desc = Agent.env.get_traffic_info()
         if not status:
-            return {"success": False, "error": desc}
+            return {"message": desc, "status": False}
             
         # Simple direct route for now
         return {
-            "success": True,
-            "route": {
+            "message": {
                 "start": start,
                 "end": end,
                 "distance": ((end[0] - start[0])**2 + (end[1] - start[1])**2)**0.5,
                 "estimated_time": "10 minutes"
-            }
+            },
+            "status": True
         }
-        
+
     @tool
-    def implement_traffic_control(self, road_ids: List[str]) -> Dict:
-        """Implement traffic control on specified roads"""
-        status, roads, desc = self.env.get_traffic_info()
+    def implement_traffic_control(road_ids: List[str]) -> Dict:
+        """实施交通管制"""
+        status, roads, desc = Agent.env.get_traffic_info()
         if not status:
-            return {"success": False, "error": desc}
+            return {"message": desc, "status": False}
             
         controlled_roads = [r for r in road_ids if r in roads]
         
         return {
-            "success": True,
-            "traffic_control": {
+            "message": {
                 "controlled_roads": controlled_roads,
                 "status": "implemented",
                 "affected_areas": len(controlled_roads)
-            }
+            },
+            "status": True
         }

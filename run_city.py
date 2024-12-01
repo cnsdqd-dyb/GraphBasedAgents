@@ -16,8 +16,7 @@ from CityEnvironment.city_emergency_env import CityEmergencyEnv
 from CityPipe.controller import GlobalController
 from CityPipe.data_manager import DataManager
 from CityPipe.task_manager import TaskManager
-from CityPipe.agent import EmergencyResponseAgent
-from Agent.emergency_agents import EmergencyRescueAgent, MedicalRescueAgent, TrafficControlAgent, DisasterMonitoringAgent, SecurityControlAgent
+from Agent.emergency_agents import Agent
 import json
 import os
 
@@ -45,57 +44,24 @@ def main():
         "api_base": base_url,
         "api_key_list": api_key_list
     }
+    Agent.base_url = base_url
 
-    # 设置智能体模型
-    EmergencyResponseAgent.model = "gpt-4-1106-preview"
-    EmergencyResponseAgent.base_url = base_url
-    EmergencyResponseAgent.api_key_list = api_key_list
-
-    # 定义智能体工具
-    emergency_rescue_agent_tools = [
-        EmergencyRescueAgent.organize_rescue_team,
-        EmergencyRescueAgent.create_rescue_plan,
-        EmergencyRescueAgent.identify_hazard,
-    ]
-
-    traffic_control_agent_tools = [
-        TrafficControlAgent.implement_traffic_control,
-        TrafficControlAgent.get_traffic_status,
-        TrafficControlAgent.plan_rescue_route
-    ]
-
-    disaster_monitoring_agent_tools = [
-        DisasterMonitoringAgent.get_environmental_data,
-        DisasterMonitoringAgent.analyze_risk,
-        DisasterMonitoringAgent.predict_disaster_spread
-    ]
-
-    security_control_agent_tools = [
-        SecurityControlAgent.create_evacuation_plan,
-        SecurityControlAgent.set_security_perimeter,
-        SecurityControlAgent.deploy_security_personnel
-    ]
-
-    medical_rescue_agent_tools = [
-        MedicalRescueAgent.organize_medical_team,
-        MedicalRescueAgent.create_rescue_plan,
-        MedicalRescueAgent.get_medical_resources
-    ]
     # 注册智能体
     agent_names = ["emergency_rescue_agent", "traffic_control_agent", "disaster_monitoring_agent", "security_control_agent", "medical_rescue_agent"]
     agent_tools = [
-        emergency_rescue_agent_tools,
-        traffic_control_agent_tools,
-        disaster_monitoring_agent_tools,
-        security_control_agent_tools,
-        medical_rescue_agent_tools
+        Agent.emergency_rescue_agent_tools(),
+        Agent.traffic_control_agent_tools(),
+        Agent.disaster_monitoring_agent_tools(),
+        Agent.security_control_agent_tools(),
+        Agent.medical_rescue_agent_tools()
     ]
-
     for i in range(len(agent_names)):
         env.agent_register(
             agent_tools=agent_tools[i],
             agent_number=1,
-            name_list=[agent_names[i]]
+            name_list=[agent_names[i]],
+            model=llm_config["api_model"],
+            api_key_list=llm_config["api_key_list"]
         )
     # 运行环境
     with env.run():

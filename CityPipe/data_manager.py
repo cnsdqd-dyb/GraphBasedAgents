@@ -249,6 +249,21 @@ class DataManager:
                 other_agents.append(f"Agent {agent_name}: {history}")
         return other_agents
 
+    def query_agent(self, name) -> str:
+        # used by controller
+        for item in self._agent_data:
+            if item["name"] == name:
+                return item["content"]
+        return "No agent found."
+
+    def query_agent_list(self, name_list: list) -> [str]:
+        # used by controller
+        result_list = []
+        for name in name_list:
+            result_list.append(self.query_agent(name))
+
+        return result_list
+
     def update_database_init(self, info: list):
         self._logger.debug("=" * 20 + " Update Database Init " + "=" * 20)
         self._logger.info(f"gathering info data: \n{info}")
@@ -422,4 +437,42 @@ class DataManager:
             return agent_data
         except Exception as e:
             self._logger.error(f"Error processing agent data: {str(e)}")
+            return {}
+
+    def _process_history(self, item: dict) -> dict:
+        """
+        Process history data from input item.
+        
+        Args:
+            item (dict): Input item containing history data
+            
+        Returns:
+            dict: Processed history data
+        """
+        try:
+            history_data = {}
+            
+            # 提取代理名称
+            if "name" not in item:
+                return {}
+            agent_name = item["name"]
+            
+            # 初始化代理的历史记录
+            if agent_name not in self._history_data:
+                self._history_data[agent_name] = []
+            
+            # 创建历史记录条目
+            history_entry = {
+                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "task": item.get("task", ""),
+                "feedback": item.get("feedback", {}),
+                "status": item.get("status", {})
+            }
+            
+            # 添加到历史记录
+            history_data[agent_name] = self._history_data[agent_name] + [history_entry]
+            
+            return history_data
+        except Exception as e:
+            self._logger.error(f"Error processing history data: {str(e)}")
             return {}

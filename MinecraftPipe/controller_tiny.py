@@ -47,7 +47,7 @@ class GlobalController:
         self.data_manager.llm = init_language_model(dm_llm_config)
 
         llm = init_language_model(llm_config)
-        self.agent_list = [BaseAgent(llm, env, data_manager, name=a.name, silent=False) for a in env.agent_pool]
+        self.agent_list = [BaseAgent(llm, env, data_manager, name=a.name, agent_type=a.name, silent=False) for a in env.agent_pool]
         self.task_manager.agent_list = self.agent_list
         self.assignment = {}
         self.feedback = {}

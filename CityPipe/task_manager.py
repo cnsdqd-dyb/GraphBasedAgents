@@ -36,7 +36,7 @@ class TaskManager:
         self.graph:Graph = None
         self.logger = init_logger("TaskManager", level= logging.WARNING ,dump=True, silent=silent)
         self.status = TaskManager.idle
-        self.agent_describe = None
+        self.unit_describe = None
         self.retriever = Retriever()
         self.agent_list = []
         self.task_document = None
@@ -173,14 +173,14 @@ class TaskManager:
             system_prompt = PART_DECOMPOSE_SYSTEM_PROMPT
             user_prompt = format_string(PART_DECOMPOSE_USER_PROMPT, {"task": {"description": description, 
                                                                      "meta-data": content},
-                                                            "unit_ability": self.agent_describe,
+                                                            "unit_ability": self.unit_describe,
                                                             "env": env_description,
                                                             "num": len(self.agent_list)})
         elif self.manage_method == "merge":
             system_prompt = DECOMPOSE_SYSTEM_PROMPT
             user_prompt = format_string(DECOMPOSE_USER_PROMPT, {"task": {"description": description, 
                                                                         "meta-data": content},
-                                                                "unit_ability": self.agent_describe,
+                                                                "unit_ability": self.unit_describe,
                                                                 "env": env_description})
         else:
             self.logger.error("Task Manager Method Error.")
@@ -194,7 +194,6 @@ class TaskManager:
         omit_keys = [("assigned_unit", "list"), ("required_subtasks", "list"), ("retrieval_paths", "list")]
         result = self.fill_keys_omit(result, omit_keys) # fill the result with empty data
         self.logger.warning(response)
-
         subtask_list = []
         for subtask_data in result:
             sub_content = self.get_relevant_content_by_path({"description": description, 
@@ -215,6 +214,7 @@ class TaskManager:
             subtask_list.append(subtask)
 
         self.graph = self.query_graph(subtask_list)
+        self.logger.warning(self.graph)
 
         time_str = time.strftime("%Y_%m_%d_%H_%M_%S_graph", time.localtime())
         
@@ -258,7 +258,7 @@ class TaskManager:
                         "task_description": task_description, 
                         "current_task": current_task_description, 
                         "env": env_description, 
-                        "agent_state": [self.dm.query_history(agent.name) for agent in self.agent_list], 
+                        "unit_state": [self.dm.query_history(agent.name) for agent in self.agent_list], 
                        }
         strategy_system_prompt = STRATEGY_SYSTEM_PROMPT
         strategy_user_prompt = format_string(STRATEGY_USER_PROMPT, format_data)
@@ -445,9 +445,9 @@ class TaskManager:
         system_prompt = REDECOMPOSE_SYSTEM_PROMPT
         user_prompt = format_string(REDECOMPOSE_USER_PROMPT, {"task": {"description": self.task_description, 
                                                                      "meta-data": self.task_document},
-                                                            "unit_ability": self.agent_describe,
+                                                            "unit_ability": self.unit_describe,
                                                             "env": env_description, 
-                                                            "agent_state": [self.dm.query_history(agent.name) for agent in self.agent_list], 
+                                                            "unit_state": [self.dm.query_history(agent.name) for agent in self.agent_list], 
                                                             "failure_previous_subtask": self.fail_trace_description,
                                                             "success_previous_subtask": self.task_trace_description,
                                                             "num": len(self.agent_list)})
